@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomodoro Calendar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        body { font-family: 'Inter', 'Noto Sans JP', sans-serif; }
+        .text-outline { text-shadow: 0 0 3px white, 0 0 3px white, 0 0 3px white, 0 0 3px white; }
+        .dark .text-outline { text-shadow: 0 0 3px #1a202c, 0 0 3px #1a202c, 0 0 3px #1a202c, 0 0 3px #1a202c; }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        .dark ::-webkit-scrollbar-track { background: #2d3748; }
+        .dark ::-webkit-scrollbar-thumb { background: #718096; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
+        
+        .view-container { transition: transform 0.3s ease-in-out; }
+        .view-hidden-left { transform: translateX(-100%); opacity: 0; position: absolute; pointer-events: none; }
+        .view-hidden-right { transform: translateX(100%); opacity: 0; position: absolute; pointer-events: none; }
+        
+        .modal-backdrop {
+            transition: opacity 0.3s ease-in-out;
+        }
+        .modal-content {
+            transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+        }
+        .modal-hidden {
+            pointer-events: none;
+        }
+        .modal-hidden .modal-backdrop {
+            opacity: 0;
+        }
+        .modal-hidden .modal-content {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+    </style>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300">
+
+    <div id="app-container" class="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+
+        <div class="bg-white dark:bg-gray-800 shadow-xl rounded-2xl p-4 sm:p-6">
+            <header class="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-gray-700">
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-white">Pomodoro Calendar</h1>
+                <button id="theme-toggle" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800">
+                    <svg id="theme-icon-light" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707"></path></svg>
+                    <svg id="theme-icon-dark" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                </button>
+            </header>
+
+            <main class="mt-6">
+                <div class="mb-4 flex justify-center p-1 bg-gray-200 dark:bg-gray-700 rounded-lg">
+                    <button id="show-timer-btn" class="w-1/2 py-2 text-sm font-bold bg-white dark:bg-gray-800 rounded-md shadow">タイマー</button>
+                    <button id="show-calendar-btn" class="w-1/2 py-2 text-sm font-bold text-gray-600 dark:text-gray-300">カレンダー</button>
+                </div>
+
+                <div class="relative overflow-hidden min-h-[450px]">
+                    <div id="timer-view" class="w-full view-container flex flex-col items-center justify-center p-6 rounded-xl">
+                        <div class="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
+                            <svg class="absolute inset-0" viewBox="0 0 100 100">
+                                <circle class="text-gray-200 dark:text-gray-700" stroke-width="8" stroke="currentColor" fill="transparent" r="45" cx="50" cy="50" />
+                                <circle id="progress-ring" class="text-blue-500 transform -rotate-90 origin-center transition-all duration-500" stroke-width="8" stroke-dasharray="283" stroke-dashoffset="0" stroke-linecap="round" stroke="currentColor" fill="transparent" r="45" cx="50" cy="50" />
+                            </svg>
+                            <div class="text-center">
+                                <p id="timer-mode" class="text-sm font-semibold text-blue-500 dark:text-blue-400">FOCUS</p>
+                                <p id="timer-display" class="text-5xl sm:text-6xl font-bold text-gray-800 dark:text-white tracking-tighter">25:00</p>
+                                <p id="set-counter" class="text-base font-medium text-gray-500 dark:text-gray-400">1 / 4 セット</p>
+                            </div>
+                        </div>
+                        <div class="mt-8 flex space-x-4">
+                            <button id="start-pause-btn" class="px-8 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800">START</button>
+                            <button id="reset-btn" class="px-6 py-3 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 font-bold rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-offset-gray-800">RESET</button>
+                        </div>
+                    </div>
+
+                    <div id="calendar-view" class="w-full view-container view-hidden-right p-2 sm:p-0">
+                        <div class="flex items-center justify-between mb-4">
+                            <button id="prev-month-btn" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                            <h3 id="calendar-header" class="text-xl font-bold"></h3>
+                            <button id="next-month-btn" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
+                        </div>
+                        <div class="grid grid-cols-7 gap-1 text-center text-sm font-semibold text-gray-500 dark:text-gray-400">
+                            <div class="py-2">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div>
+                        </div>
+                        <div id="calendar-grid" class="grid grid-cols-7 mt-1 border-t border-l border-gray-200 dark:border-gray-700"></div>
+                    </div>
+                </div>
+            </main>
+
+            <footer class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <button id="settings-btn" class="p-2 flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    <span>設定</span>
+                </button>
+                <div class="flex space-x-2">
+                    <button id="import-btn" class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 transition">Import</button>
+                    <button id="export-btn" class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 transition">Export</button>
+                    <input type="file" id="import-file-input" class="hidden" accept=".json">
+                </div>
+            </footer>
+        </div>
+
+        <!-- Modals -->
+        <div id="settings-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-hidden">
+            <div id="settings-modal-backdrop" class="absolute inset-0 bg-black/50 modal-backdrop"></div>
+            <div class="relative z-10 bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 modal-content">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">設定</h2>
+                    <button id="close-settings-modal-btn" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div class="space-y-6">
+                     <div>
+                        <h3 class="font-semibold mb-2">時間設定 (分)</h3>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div><label for="focus-time-input" class="text-sm">作業</label><input id="focus-time-input" type="number" class="mt-1 w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600" value="25"></div>
+                            <div><label for="break-time-input" class="text-sm">休憩</label><input id="break-time-input" type="number" class="mt-1 w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600" value="5"></div>
+                            <div><label for="long-break-time-input" class="text-sm">長い休憩</label><input id="long-break-time-input" type="number" class="mt-1 w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600" value="15"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="sets-input" class="font-semibold">1サイクルあたりのセット数</label>
+                        <input id="sets-input" type="number" class="mt-1 w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600" value="4">
+                    </div>
+                    <div>
+                        <h3 class="font-semibold mb-2">アラーム設定</h3>
+                        <div class="flex items-center space-x-4">
+                            <select id="alarm-sound-select" class="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600">
+                                <option value="bell">ベル</option><option value="synth">シンセ</option><option value="beep">ビープ音</option><option value="wood">木魚</option><option value="none">なし</option>
+                            </select>
+                            <button onclick="playSoundDemo()" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></button>
+                        </div>
+                        <div class="mt-2 flex items-center space-x-2">
+                            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.858 15.536a5 5 0 010-7.072m2.828 9.9a9 9 0 010-12.728"></path></svg>
+                            <input id="volume-slider" type="range" min="-30" max="0" value="-10" class="w-full">
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-8 flex justify-end">
+                    <button id="save-settings-btn" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700">保存する</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="cycle-end-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-hidden">
+            <div id="cycle-end-modal-backdrop" class="absolute inset-0 bg-black/50 modal-backdrop"></div>
+            <div class="relative z-10 bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 modal-content text-center">
+                <h2 class="text-2xl font-bold mb-2">１サイクル お疲れ様でした！</h2>
+                <p class="text-gray-600 dark:text-gray-300 mb-6">素晴らしい集中力です。リフレッシュのために長い休憩を取りませんか？</p>
+                <div class="flex justify-center space-x-4">
+                    <button id="start-long-break-btn" class="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700">長い休憩を開始</button>
+                    <button id="start-new-cycle-btn" class="px-5 py-2 bg-gray-200 dark:bg-gray-600 font-bold rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500">次のサイクルを開始</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="log-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-hidden">
+            <div id="log-modal-backdrop" class="absolute inset-0 bg-black/50 modal-backdrop"></div>
+            <div class="relative z-10 bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg p-6 modal-content">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 id="log-modal-header" class="text-2xl font-bold"></h2>
+                    <button id="close-log-modal-btn" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div id="log-modal-body" class="h-80 overflow-y-auto pr-2"></div>
+            </div>
+        </div>
+        
+        <div id="import-confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-hidden">
+            <div class="absolute inset-0 bg-black/50 modal-backdrop"></div>
+            <div class="relative z-10 bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 modal-content text-center">
+                <h2 class="text-2xl font-bold mb-2">インポート完了</h2>
+                <p class="text-gray-600 dark:text-gray-300 mb-6">データのインポートが完了しました。この操作は、このウィンドウを閉じると元に戻せなくなります。</p>
+                <div class="flex justify-center space-x-4">
+                    <button id="undo-import-btn" class="px-5 py-2 bg-gray-200 dark:bg-gray-600 font-bold rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500">元に戻す</button>
+                    <button id="close-import-confirm-btn" class="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700">閉じる</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            const UI = {
+                // Main
+                startPauseBtn: document.getElementById('start-pause-btn'),
+                resetBtn: document.getElementById('reset-btn'),
+                timerDisplay: document.getElementById('timer-display'),
+                progressRing: document.getElementById('progress-ring'),
+                timerModeDisplay: document.getElementById('timer-mode'),
+                setCounterDisplay: document.getElementById('set-counter'),
+                themeToggle: document.getElementById('theme-toggle'),
+                themeIconLight: document.getElementById('theme-icon-light'),
+                themeIconDark: document.getElementById('theme-icon-dark'),
+                docElement: document.documentElement,
+                timerBtn: document.getElementById('show-timer-btn'),
+                calendarBtn: document.getElementById('show-calendar-btn'),
+                timerView: document.getElementById('timer-view'),
+                calendarView: document.getElementById('calendar-view'),
+                // Settings
+                settingsBtn: document.getElementById('settings-btn'),
+                settingsModal: document.getElementById('settings-modal'),
+                settingsModalBackdrop: document.getElementById('settings-modal-backdrop'),
+                closeSettingsModalBtn: document.getElementById('close-settings-modal-btn'),
+                saveSettingsBtn: document.getElementById('save-settings-btn'),
+                // Cycle End
+                cycleEndModal: document.getElementById('cycle-end-modal'),
+                startLongBreakBtn: document.getElementById('start-long-break-btn'),
+                startNewCycleBtn: document.getElementById('start-new-cycle-btn'),
+                // Log
+                logModal: document.getElementById('log-modal'),
+                logModalBackdrop: document.getElementById('log-modal-backdrop'),
+                closeLogModalBtn: document.getElementById('close-log-modal-btn'),
+                logModalHeader: document.getElementById('log-modal-header'),
+                logModalBody: document.getElementById('log-modal-body'),
+                // Import/Export
+                importBtn: document.getElementById('import-btn'),
+                exportBtn: document.getElementById('export-btn'),
+                importFileInput: document.getElementById('import-file-input'),
+                importConfirmModal: document.getElementById('import-confirm-modal'),
+                undoImportBtn: document.getElementById('undo-import-btn'),
+                closeImportConfirmBtn: document.getElementById('close-import-confirm-btn'),
+                // Inputs
+                focusTimeInput: document.getElementById('focus-time-input'),
+                breakTimeInput: document.getElementById('break-time-input'),
+                longBreakTimeInput: document.getElementById('long-break-time-input'),
+                setsInput: document.getElementById('sets-input'),
+                alarmSoundSelect: document.getElementById('alarm-sound-select'),
+                volumeSlider: document.getElementById('volume-slider'),
+                // Calendar
+                calendarHeader: document.getElementById('calendar-header'),
+                calendarGrid: document.getElementById('calendar-grid'),
+                prevMonthBtn: document.getElementById('prev-month-btn'),
+                nextMonthBtn: document.getElementById('next-month-btn'),
+            };
+            
+            const ringCircumference = 2 * Math.PI * 45;
+            let timerInterval = null, state = 'idle', currentMode = 'focus', currentSet = 1, timeLeft, sessionStartTime;
+            let settings = {}, calendarData = {}, displayedDate = new Date();
+            let lastStateBeforeImport = null;
+
+            function updateTimerDisplay() {
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                UI.timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
+
+            function updateProgressRing() {
+                const totalTime = (settings[`${currentMode}Time`] || settings.focusTime) * 60;
+                const percentage = totalTime > 0 ? (totalTime - timeLeft) / totalTime : 0;
+                UI.progressRing.style.strokeDashoffset = ringCircumference * (1 - percentage);
+            }
+            
+            function setTimer(mode) {
+                currentMode = mode;
+                timeLeft = (settings[`${mode}Time`] || settings.focusTime) * 60;
+                updateDisplays();
+            }
+
+            function startTimer() {
+                if (state === 'running' || timeLeft <= 0) return;
+                state = 'running';
+                UI.startPauseBtn.textContent = 'PAUSE';
+                if (currentMode === 'focus' && !sessionStartTime) {
+                    sessionStartTime = new Date();
+                }
+
+                timerInterval = setInterval(() => {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    updateProgressRing();
+                    if (timeLeft <= 0) {
+                        handleTimerEnd();
+                    }
+                }, 1000);
+            }
+            
+            function handleTimerEnd() {
+                clearInterval(timerInterval);
+                playAlarm();
+                state = 'idle';
+                
+                if (currentMode === 'focus') {
+                    logFocusSession();
+                    sessionStartTime = null;
+                    if (currentSet >= settings.sets) openCycleEndModal();
+                    else { setTimer('break'); startTimer(); }
+                } else if (currentMode === 'break') {
+                    currentSet++;
+                    setTimer('focus');
+                    startTimer();
+                } else if (currentMode === 'longBreak') {
+                    resetTimer();
+                }
+            }
+
+            function pauseTimer() {
+                if (state !== 'running') return;
+                state = 'paused';
+                UI.startPauseBtn.textContent = 'START';
+                clearInterval(timerInterval);
+            }
+            
+            function resetTimer() {
+                clearInterval(timerInterval);
+                state = 'idle';
+                UI.startPauseBtn.textContent = 'START';
+                currentSet = 1;
+                sessionStartTime = null;
+                setTimer('focus');
+            }
+
+            function updateDisplays() {
+                UI.timerModeDisplay.textContent = {'focus': 'FOCUS', 'break': 'BREAK', 'longBreak': 'LONG BREAK'}[currentMode];
+                UI.setCounterDisplay.textContent = `${currentSet} / ${settings.sets} セット`;
+                updateTimerDisplay();
+                updateProgressRing();
+            }
+            
+            function saveSettings() {
+                settings = {
+                    focusTime: parseInt(UI.focusTimeInput.value) || 25,
+                    breakTime: parseInt(UI.breakTimeInput.value) || 5,
+                    longBreakTime: parseInt(UI.longBreakTimeInput.value) || 15,
+                    sets: parseInt(UI.setsInput.value) || 4,
+                    alarmSound: UI.alarmSoundSelect.value,
+                    volume: parseFloat(UI.volumeSlider.value)
+                };
+                localStorage.setItem('pomodoroSettings', JSON.stringify(settings));
+                resetTimer();
+                closeSettingsModal();
+            }
+
+            function loadSettings() {
+                const savedSettings = JSON.parse(localStorage.getItem('pomodoroSettings')) || {};
+                settings = { focusTime: 25, breakTime: 5, longBreakTime: 15, sets: 4, alarmSound: 'bell', volume: -10, ...savedSettings };
+                UI.focusTimeInput.value = settings.focusTime;
+                UI.breakTimeInput.value = settings.breakTime;
+                UI.longBreakTimeInput.value = settings.longBreakTime;
+                UI.setsInput.value = settings.sets;
+                UI.alarmSoundSelect.value = settings.alarmSound;
+                UI.volumeSlider.value = settings.volume;
+            }
+
+            function openModal(modal) { modal.classList.remove('modal-hidden'); }
+            function closeModal(modal) { modal.classList.add('modal-hidden'); }
+            
+            function saveCalendarData() { localStorage.setItem('pomodoroCalendarData', JSON.stringify(calendarData)); }
+            function loadCalendarData() { calendarData = JSON.parse(localStorage.getItem('pomodoroCalendarData')) || {}; }
+
+            function logFocusSession() {
+                if (!sessionStartTime) return;
+                const date = new Date(sessionStartTime);
+                const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                
+                if (!calendarData[dateKey]) {
+                    calendarData[dateKey] = { totalMinutes: 0, sessions: [] };
+                }
+                calendarData[dateKey].totalMinutes += settings.focusTime;
+                calendarData[dateKey].sessions.push({ start: sessionStartTime.toISOString(), duration: settings.focusTime });
+                
+                saveCalendarData();
+                renderCalendar();
+            }
+            
+            function formatMinutes(minutes) {
+                if (!minutes) return '';
+                const h = Math.floor(minutes / 60);
+                const m = minutes % 60;
+                return h > 0 ? `${h}h ${m}m` : `${m}m`;
+            }
+            
+            function getColorForMinutes(minutes) {
+                if (minutes >= 240) return 'bg-blue-500 dark:bg-blue-600/80';
+                if (minutes >= 120) return 'bg-blue-400 dark:bg-blue-700/70';
+                if (minutes >= 60) return 'bg-blue-300 dark:bg-blue-800/60';
+                if (minutes >= 25) return 'bg-blue-200 dark:bg-blue-900/50';
+                if (minutes > 0) return 'bg-blue-100 dark:bg-blue-900/40';
+                return 'bg-white dark:bg-gray-800';
+            }
+
+            function renderCalendar() {
+                const year = displayedDate.getFullYear(), month = displayedDate.getMonth();
+                UI.calendarHeader.textContent = `${year}年 ${month + 1}月`;
+                UI.calendarGrid.innerHTML = '';
+                
+                const firstDayOfMonth = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                
+                for (let i = 0; i < firstDayOfMonth; i++) UI.calendarGrid.insertAdjacentHTML('beforeend', '<div class="border-b border-r border-gray-200 dark:border-gray-700"></div>');
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const data = calendarData[dateKey] || { totalMinutes: 0 };
+                    const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
+                    
+                    const todayClass = isToday ? 'z-10 ring-2 ring-blue-500' : '';
+
+                    const dayHtml = `
+                        <div data-date-key="${dateKey}" class="day-cell relative w-full h-20 ${getColorForMinutes(data.totalMinutes)} flex items-center justify-center font-bold ${todayClass} cursor-pointer hover:opacity-80 transition-colors duration-300 border-b border-r border-gray-200 dark:border-gray-700">
+                            <span class="absolute top-1 left-2 text-xs">${day}</span>
+                            <span class="text-blue-800 dark:text-blue-200 text-outline">${formatMinutes(data.totalMinutes)}</span>
+                        </div>`;
+                    UI.calendarGrid.insertAdjacentHTML('beforeend', dayHtml);
+                }
+                
+                document.querySelectorAll('.day-cell').forEach(cell => {
+                    cell.addEventListener('click', e => {
+                        const dateKey = e.currentTarget.dataset.dateKey;
+                        renderLogModal(dateKey);
+                    });
+                });
+            }
+
+            function renderLogModal(dateKey) {
+                const data = calendarData[dateKey];
+                const [year, month, day] = dateKey.split('-');
+                UI.logModalHeader.textContent = `${year}年${month}月${day}日の作業ログ`;
+                
+                if (!data?.sessions?.length) {
+                    UI.logModalBody.innerHTML = '<p class="text-center text-gray-500">この日の作業記録はありません。</p>';
+                } else {
+                    const timelineHtml = `<div class="relative pl-8">
+                        <div class="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                        ${[...Array(24).keys()].map(h => `<div class="relative h-12 flex items-start"><div class="absolute -left-5 top-0 text-xs text-gray-500">${String(h).padStart(2,'0')}:00</div></div>`).join('')}
+                        ${data.sessions.map(s => {
+                            const startDate = new Date(s.start);
+                            const top = (startDate.getHours() * 60 + startDate.getMinutes()) / (24 * 60) * (24 * 48);
+                            const height = s.duration / 60 * 48;
+                            const startTime = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
+                            return `<div class="absolute left-8 w-[calc(100%-4rem)] p-2 bg-blue-100 dark:bg-blue-900/50 border-l-4 border-blue-500 rounded-r-lg" style="top:${top}px;height:${height}px;">
+                                <p class="font-bold text-sm text-blue-800 dark:text-blue-200">作業セッション</p>
+                                <p class="text-xs text-blue-600 dark:text-blue-300">${startTime} から ${s.duration}分</p>
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+                    UI.logModalBody.innerHTML = timelineHtml;
+                }
+                openModal(UI.logModal);
+            }
+
+            function handleExport() {
+                const dataToExport = {
+                    settings: settings,
+                    calendarData: calendarData
+                };
+                const dataStr = JSON.stringify(dataToExport, null, 2);
+                const blob = new Blob([dataStr], {type: "application/json"});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const today = new Date();
+                const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+                a.href = url;
+                a.download = `pomodoro-calendar-backup-${dateStr}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            function handleImport(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (importedData.settings && importedData.calendarData) {
+                            lastStateBeforeImport = { settings: { ...settings }, calendarData: { ...calendarData } };
+                            
+                            settings = { ...settings, ...importedData.settings };
+                            calendarData = { ...calendarData, ...importedData.calendarData };
+                            
+                            localStorage.setItem('pomodoroSettings', JSON.stringify(settings));
+                            localStorage.setItem('pomodoroCalendarData', JSON.stringify(calendarData));
+
+                            loadSettings();
+                            renderCalendar();
+                            resetTimer();
+                            openModal(UI.importConfirmModal);
+                        } else {
+                            alert('無効なファイル形式です。');
+                        }
+                    } catch (error) {
+                        alert('ファイルの読み込みに失敗しました。');
+                    } finally {
+                        UI.importFileInput.value = ''; // Reset file input
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            function undoImport() {
+                if (lastStateBeforeImport) {
+                    settings = lastStateBeforeImport.settings;
+                    calendarData = lastStateBeforeImport.calendarData;
+                    localStorage.setItem('pomodoroSettings', JSON.stringify(settings));
+                    localStorage.setItem('pomodoroCalendarData', JSON.stringify(calendarData));
+                    loadSettings();
+                    renderCalendar();
+                    resetTimer();
+                    lastStateBeforeImport = null;
+                }
+                closeModal(UI.importConfirmModal);
+            }
+
+            // --- Event Listeners ---
+            UI.themeToggle.addEventListener('click', () => {
+                UI.docElement.classList.toggle('dark');
+                localStorage.setItem('theme', UI.docElement.classList.contains('dark') ? 'dark' : 'light');
+                UI.themeIconLight.classList.toggle('hidden');
+                UI.themeIconDark.classList.toggle('hidden');
+            });
+            if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                UI.docElement.classList.add('dark'); UI.themeIconLight.classList.remove('hidden'); UI.themeIconDark.classList.add('hidden');
+            } else {
+                UI.themeIconLight.classList.add('hidden'); UI.themeIconDark.classList.remove('hidden');
+            }
+            UI.timerBtn.addEventListener('click', () => {
+                UI.timerView.classList.remove('view-hidden-left', 'view-hidden-right');
+                UI.calendarView.classList.add('view-hidden-right');
+                UI.timerBtn.classList.add('bg-white', 'dark:bg-gray-800', 'shadow');
+                UI.timerBtn.classList.remove('text-gray-600', 'dark:text-gray-300');
+                UI.calendarBtn.classList.remove('bg-white', 'dark:bg-gray-800', 'shadow');
+                UI.calendarBtn.classList.add('text-gray-600', 'dark:text-gray-300');
+            });
+            UI.calendarBtn.addEventListener('click', () => {
+                UI.timerView.classList.add('view-hidden-left');
+                UI.calendarView.classList.remove('view-hidden-right');
+                UI.calendarBtn.classList.add('bg-white', 'dark:bg-gray-800', 'shadow');
+                UI.calendarBtn.classList.remove('text-gray-600', 'dark:text-gray-300');
+                UI.timerBtn.classList.remove('bg-white', 'dark:bg-gray-800', 'shadow');
+                UI.timerBtn.classList.add('text-gray-600', 'dark:text-gray-300');
+            });
+            UI.startPauseBtn.addEventListener('click', () => { state === 'running' ? pauseTimer() : startTimer(); });
+            UI.resetBtn.addEventListener('click', resetTimer);
+            UI.settingsBtn.addEventListener('click', () => openModal(UI.settingsModal));
+            UI.closeSettingsModalBtn.addEventListener('click', () => closeModal(UI.settingsModal));
+            UI.settingsModalBackdrop.addEventListener('click', () => closeModal(UI.settingsModal));
+            UI.saveSettingsBtn.addEventListener('click', saveSettings);
+            UI.startLongBreakBtn.addEventListener('click', () => { closeModal(UI.cycleEndModal); setTimer('longBreak'); startTimer(); });
+            UI.startNewCycleBtn.addEventListener('click', () => { closeModal(UI.cycleEndModal); resetTimer(); startTimer(); });
+            UI.prevMonthBtn.addEventListener('click', () => { displayedDate.setMonth(displayedDate.getMonth() - 1); renderCalendar(); });
+            UI.nextMonthBtn.addEventListener('click', () => { displayedDate.setMonth(displayedDate.getMonth() + 1); renderCalendar(); });
+            UI.closeLogModalBtn.addEventListener('click', () => closeModal(UI.logModal));
+            UI.logModalBackdrop.addEventListener('click', () => closeModal(UI.logModal));
+            UI.exportBtn.addEventListener('click', handleExport);
+            UI.importBtn.addEventListener('click', () => UI.importFileInput.click());
+            UI.importFileInput.addEventListener('change', handleImport);
+            UI.undoImportBtn.addEventListener('click', undoImport);
+            UI.closeImportConfirmBtn.addEventListener('click', () => closeModal(UI.importConfirmModal));
+
+            // --- Initial Setup ---
+            loadSettings();
+            loadCalendarData();
+            UI.progressRing.style.strokeDasharray = ringCircumference;
+            setTimer('focus');
+            renderCalendar();
+        });
+
+        // Alarm Sound Control
+        let synth;
+        function getSynth() {
+            if (!synth) {
+                synth = {
+                    bell: new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 } }).toDestination(),
+                    synth: new Tone.Synth().toDestination(),
+                    beep: new Tone.OmniOscillator("C4", "sine").toDestination(),
+                    wood: new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.3, sustain: 0.2, release: 1.2 } }).toDestination()
+                };
+            }
+            return synth;
+        }
+        function playSound(sound, volume) {
+            const currentSynth = getSynth();
+            Tone.getDestination().volume.value = volume;
+            Tone.start();
+            if(sound === 'bell') currentSynth.bell.triggerAttackRelease("G5", "8n", Tone.now());
+            else if (sound === 'synth') currentSynth.synth.triggerAttackRelease("C4", "8n");
+            else if (sound === 'beep') { currentSynth.beep.frequency.value = "G5"; currentSynth.beep.start().stop("+0.2"); }
+            else if (sound === 'wood') currentSynth.wood.triggerAttackRelease("G4", "8n");
+        }
+        function playSoundDemo() {
+            playSound(document.getElementById('alarm-sound-select').value, parseFloat(document.getElementById('volume-slider').value));
+        }
+        function playAlarm() {
+            const sound = settings.alarmSound;
+            const volume = settings.volume;
+            if (sound !== 'none') playSound(sound, volume);
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
